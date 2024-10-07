@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList, SafeAreaView, Dimensions, TouchableWithoutFeedback, BackHandler } from 'react-native';
 import WorkoutCard from './WorkoutCard';
 import Header from '../Header';
-import SearchBar from '../SearchBar';
+import SearchBar from '../../components/SearchBar';
 import FloatingAddButton from '../FloatingAddButton';
 import TrainingModal from './TrainingModal';
 

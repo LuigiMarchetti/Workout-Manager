@@ -9,6 +9,7 @@ import WorkoutsScreen from './pages/workouts/WorkoutsScreen';
 import ProfileScreen from './pages/ProfileScreen';
 import StatisticsScreen from './pages/statistics/StatisticsScreen';
 import CreateRoutineScreen from './pages/routines/CreateRoutineScreen';
+import AddExerciseScreen from './pages/routines/AddExerciseScreen';
 import { useEffect, useState } from 'react';
 
 const Tab = createBottomTabNavigator();
@@ -30,6 +31,7 @@ function RoutinesStack() {
     >
       <Stack.Screen name="RoutinesMain" component={RoutinesScreen} />
       <Stack.Screen name="CreateRoutine" component={CreateRoutineScreen} />
+      <Stack.Screen name="AddExercise" component={AddExerciseScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );

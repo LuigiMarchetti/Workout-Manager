@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TextInput, Image, FlatList, SafeAreaView, Dimensions, TouchableOpacity } from 'react-native';
 import RoutineCard from './RoutineCard';
 import Header from '../Header';
-import SearchBar from '../SearchBar';
+import SearchBar from '../../components/SearchBar';
 import FloatingAddButton from '../FloatingAddButton';
 
 const { width, height } = Dimensions.get('window');
