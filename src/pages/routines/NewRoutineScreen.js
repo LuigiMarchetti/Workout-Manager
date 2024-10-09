@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
         minWidth: responsiveWidth(20),
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 4,
+        borderRadius: responsiveWidth(1.75), // size border radius
     },
     headerButtonText: {
         color: '#4C24FF',

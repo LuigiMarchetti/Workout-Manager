@@ -41,7 +41,7 @@ export default function RoutinesScreen({ navigation }) {
     };
 
     const handleFabPress = () => {
-        navigation.navigate('CreateRoutine'); // Navigate to the new screen
+        navigation.navigate('NewRoutine'); // Navigate to the new screen
     };
 
     return (

@@ -8,9 +8,10 @@ import RoutinesScreen from './pages/routines/RoutinesScreen';
 import WorkoutsScreen from './pages/workouts/WorkoutsScreen';
 import ProfileScreen from './pages/ProfileScreen';
 import StatisticsScreen from './pages/statistics/StatisticsScreen';
-import CreateRoutineScreen from './pages/routines/CreateRoutineScreen';
+import NewRoutineScreen from './pages/routines/NewRoutineScreen';
 import AddExerciseScreen from './pages/routines/AddExerciseScreen';
-import { useEffect, useState } from 'react';
+import CustomExerciseScreen from './pages/routines/CustomExerciseScreen';
+import { useState } from 'react';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -25,13 +26,14 @@ function RoutinesStack() {
           height: 60, // Set your desired height
           paddingBottom: 15, // Adjust as needed
           borderTopColor: '#333',
-          display: route.name === 'CreateRoutine' ? 'none' : 'flex', // Hide tab bar on CreateRoutine screen
+          display: route.name === 'NewRoutine' ? 'none' : 'flex', // Hide tab bar on NewRoutine screen
         },
       })}
     >
       <Stack.Screen name="RoutinesMain" component={RoutinesScreen} />
-      <Stack.Screen name="CreateRoutine" component={CreateRoutineScreen} />
+      <Stack.Screen name="NewRoutine" component={NewRoutineScreen} />
       <Stack.Screen name="AddExercise" component={AddExerciseScreen} />
+      <Stack.Screen name="CustomExercise" component={CustomExerciseScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );

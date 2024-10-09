@@ -1,6 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Image, SafeAreaView, Dimensions } from 'react-native';
-import FloatingAddButton from '../FloatingAddButton';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Image, SafeAreaView, Dimensions } from 'react-native';
 import SearchBar from '../../components/SearchBar'; // Adjust the import path based on your structure
 
 const { width, height } = Dimensions.get('window');
@@ -16,11 +15,6 @@ const exerciseData = [
 ];
 
 const AddExerciseScreen = ({ navigation }) => {
-
-    const handleFabPress = () => {
-        console.log('Add button pressed');
-    };
-
     const renderExerciseItem = ({ item }) => (
         <TouchableOpacity style={styles.exerciseItem}>
             <Image source={item.image} style={styles.exerciseImage} />
@@ -40,7 +34,7 @@ const AddExerciseScreen = ({ navigation }) => {
                         <Text style={styles.headerButtonText}>Cancel</Text>
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Add Exercise</Text>
-                    <TouchableOpacity style={styles.headerButton}>
+                    <TouchableOpacity style={styles.headerButton} onPress={() => navigation.navigate('CustomExercise')}>
                         <Text style={styles.headerButtonText}>Custom</Text>
                     </TouchableOpacity>
                 </View>
@@ -58,6 +52,9 @@ const AddExerciseScreen = ({ navigation }) => {
                     </TouchableOpacity>
                 </View>
 
+                {/* List Title */}
+                <Text style={styles.listTitle}>Exercises:</Text>
+
                 {/* Exercise List */}
                 <FlatList
                     data={exerciseData}
@@ -65,9 +62,6 @@ const AddExerciseScreen = ({ navigation }) => {
                     keyExtractor={item => item.id}
                     style={styles.exerciseList}
                 />
-
-                {/* Floating Add Button */}
-                <FloatingAddButton onPress={handleFabPress} />
             </View>
         </SafeAreaView>
     );
@@ -88,7 +82,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: '#1A1A1A',
         paddingHorizontal: responsiveWidth(4),
-        padding: responsiveHeight(2.5),
+        paddingVertical: responsiveHeight(2.5),
         borderBottomWidth: 1,
         borderBottomColor: '#333',
     },
@@ -112,22 +106,30 @@ const styles = StyleSheet.create({
     filterContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingHorizontal: responsiveWidth(4), // Adjust margins as needed
-        marginTop: responsiveHeight(2),
+        paddingHorizontal: responsiveWidth(4), 
+        marginVertical: responsiveHeight(2),
     },
     filterButton: {
         backgroundColor: '#1A1A1A',
-        borderRadius: 8,
+        borderRadius: responsiveWidth(2),
         paddingVertical: responsiveHeight(1.5),
         paddingHorizontal: responsiveWidth(6),
-        flex: 0.45, // Each button takes up 45% of the container
-        alignItems: 'center', // Ensure the text is centered
+        flex: 0.475, // Each button takes up ~47.5% of the container
+        alignItems: 'center',
         justifyContent: 'center',
     },
     filterButtonText: {
         color: '#FFF',
         fontSize: responsiveWidth(3.8),
         textAlign: 'center',
+    },
+    listTitle: {
+        marginTop: responsiveHeight(2),
+        marginBottom: responsiveHeight(-0.5),
+        marginLeft: responsiveWidth(0.7),
+        paddingHorizontal: responsiveWidth(4),
+        fontSize: responsiveWidth(3.8),
+        color: '#888',
     },
     exerciseList: {
         flex: 1,
@@ -138,14 +140,14 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#1A1A1A',
-        borderRadius: 8,
-        marginBottom: 10,
-        padding: 10,
+        borderRadius: responsiveWidth(2),
+        marginBottom: responsiveHeight(1.5),
+        padding: responsiveWidth(3),
     },
     exerciseImage: {
-        width: 50,
-        height: 50,
-        marginRight: 10,
+        width: responsiveWidth(12),
+        height: responsiveWidth(12),
+        marginRight: responsiveWidth(4),
     },
     exerciseTextContainer: {
         flex: 1,
@@ -153,13 +155,12 @@ const styles = StyleSheet.create({
     exerciseName: {
         fontWeight: 'bold',
         color: '#FFF',
-        fontSize: 16,
+        fontSize: responsiveWidth(4.5),
     },
     exerciseMuscle: {
         color: '#888',
-        fontSize: 14,
+        fontSize: responsiveWidth(3.8),
     },
 });
-
 
 export default AddExerciseScreen;

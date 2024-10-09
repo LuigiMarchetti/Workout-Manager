@@ -12,7 +12,7 @@
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/stack": "^6.4.1",
-    "expo": "~51.0.36",
+    "expo": "~51.0.37",
     "expo-status-bar": "~1.12.1",
     "lts": "^1.2.0",
     "npm": "^10.9.0",
