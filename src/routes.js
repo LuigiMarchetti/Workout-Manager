@@ -11,6 +11,7 @@ import StatisticsScreen from './pages/statistics/StatisticsScreen';
 import NewRoutineScreen from './pages/routines/NewRoutineScreen';
 import AddExerciseScreen from './pages/routines/AddExerciseScreen';
 import CustomExerciseScreen from './pages/routines/CustomExerciseScreen';
+import NewWorkoutScreen from './pages/workouts/NewWorkoutScreen';
 import { useState } from 'react';
 
 const Tab = createBottomTabNavigator();
@@ -44,6 +45,7 @@ function WorkoutsStack({ navigation, route }) {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="WorkoutsMain" component={WorkoutsScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="NewWorkout" component={NewWorkoutScreen} />
     </Stack.Navigator>
   );
 }

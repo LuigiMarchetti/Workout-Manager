@@ -54,8 +54,9 @@ export default function WorkoutsScreen({ navigation }) {
     };
 
     const handleSelectTraining = (training) => {
-        console.log('Selected training:', training);
         setIsModalVisible(false);
+        console.log('Selected training:', training);
+        navigation.navigate('NewWorkout')
     };
 
     // Use BackHandler to close modal when back button is pressed
