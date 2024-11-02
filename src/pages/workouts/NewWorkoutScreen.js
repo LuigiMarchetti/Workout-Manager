@@ -15,7 +15,7 @@ const exerciseData = [
         sets: [
             { set: 1, weight: '5kg X 10', reps: 20, done: true },
             { set: 2, weight: '5kg X 10', reps: 20, done: true },
-            { set: 3, weight: '5kg X 10', reps: 20, done: true },
+            { set: 3, weight: '5kg X 10', reps: 20, done: false },
         ]
     },
     { 
@@ -23,7 +23,7 @@ const exerciseData = [
         name: 'Running', 
         image: require('../../../assets/Outros/running.png'),
         sets: [
-            { set: 1, distance: '00:32', time: '20', done: true },
+            { set: 1, distance: '00:32', time: '20', done: false },
         ]
     },
     { 
@@ -71,7 +71,7 @@ const NewWorkoutScreen = ({ navigation }) => {
                         <Text style={styles.setText}>{set.weight || set.distance || set.reps}</Text>
                         <Text style={styles.setText}>{set.reps || set.time || set.count}</Text>
                         <Image 
-                            source={set.done ? require('../assets/check.png') : require('../assets/uncheck.png')} 
+                            source={set.done ? require('../../../assets/checkedBox.png') : require('../../../assets/unCheckedBox.png')} 
                             style={styles.checkImage}
                         />
                     </View>

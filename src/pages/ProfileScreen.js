@@ -11,7 +11,7 @@ const responsiveHeight = (percent) => (height * percent) / 100;
 const responsiveFontSize = (size) => (width * size) / 375; // Assuming design is based on 375px width
 
 export default function ProfileScreen({ navigation }) {
-  useEffect(() => {
+  /*useEffect(() => {
     navigation.getParent()?.setOptions({
       tabBarStyle: {
         display: "none"
@@ -21,7 +21,7 @@ export default function ProfileScreen({ navigation }) {
       tabBarStyle: undefined
     });
   }, [navigation]);
-
+*/
   return (
     <>
       <Header

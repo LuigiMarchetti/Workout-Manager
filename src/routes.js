@@ -79,6 +79,8 @@ export default function Routes() {
 
             return {
               headerShown: false,
+              tabBarHideOnKeyboard: true, // Add this line
+              animationEnabled: false,
               tabBarIcon: ({ color }) => (
                 <Image
                   source={iconSource}
@@ -93,7 +95,6 @@ export default function Routes() {
                 height: tabBarHeight,
                 paddingBottom: windowHeight * 0.015,
                 borderTopColor: '#333',
-                //display: route.name === 'Routines' ? 'none' : 'flex', // Adjust this line
               },
               tabBarLabelStyle: {
                 paddingBottom: 2,
