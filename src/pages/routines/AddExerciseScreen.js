@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Modal } from 'react-native';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
 import SearchBar from '../../components/SearchBar';
-import RealmService from '../../services/RealmService';
+import SqliteService from '../../services/SqliteService';
+import ExerciseBodyPart from '../../enums/ExerciseBodyPart';
+import ExerciseEquipment from '../../enums/ExerciseEquipment';
 
 const { width, height } = Dimensions.get('window');
 const responsiveWidth = (percent) => (width * percent) / 100;
@@ -16,8 +19,11 @@ const AddExerciseScreen = ({ navigation }) => {
     const [currentPage, setCurrentPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
-    const [uniqueEquipment, setUniqueEquipment] = useState([]);
-    const [uniqueBodyParts, setUniqueBodyParts] = useState([]);
+    const [isModalVisible, setIsModalVisible] = useState(false);
+    const [modalType, setModalType] = useState(null);
+    const [modalOptions, setModalOptions] = useState([]);
+    const [uniqueEquipment, setUniqueEquipment] = useState(['All Equipment']);
+    const [uniqueBodyParts, setUniqueBodyParts] = useState(['All Body Parts']);
 
     // Load initial data and metadata
     useEffect(() => {
@@ -27,84 +33,116 @@ const AddExerciseScreen = ({ navigation }) => {
 
     // Load metadata (unique equipment and body parts)
     const loadMetadata = () => {
-        const allExercises = RealmService.getAllExercises();
-        const equipmentSet = new Set(['All Equipment']);
-        const bodyPartsSet = new Set(['All Body Parts']);
+        const equipmentValues = Object.values(ExerciseEquipment)
+            .filter(value => typeof value === 'string');
+        const bodyPartValues = Object.values(ExerciseBodyPart)
+            .filter(value => typeof value === 'string');
 
-        allExercises.forEach(exercise => {
-            equipmentSet.add(exercise.equipment);
-            bodyPartsSet.add(exercise.bodyPart);
-        });
-
-        setUniqueEquipment(Array.from(equipmentSet));
-        setUniqueBodyParts(Array.from(bodyPartsSet));
+        setUniqueEquipment(['All Equipment', ...equipmentValues]);
+        setUniqueBodyParts(['All Body Parts', ...bodyPartValues]);
     };
 
     // Load exercises with pagination and filters
     const loadExercises = useCallback(async (reset = false) => {
         if (isLoading || (!hasMore && !reset)) return;
-    
+
         setIsLoading(true);
         const newPage = reset ? 0 : currentPage;
-        
+
         try {
             const query = {
                 searchQuery,
-                equipment: selectedEquipment,
-                bodyPart: selectedBodyPart,
+                equipment: selectedEquipment === 'All Equipment' ? null : selectedEquipment,
+                bodyPart: selectedBodyPart === 'All Body Parts' ? null : selectedBodyPart,
                 skip: newPage * PAGE_SIZE,
-                limit: PAGE_SIZE
+                limit: PAGE_SIZE // This ensures we only get 20 items per load
             };
-    
-            const { exercises: newExercises, hasMore: moreAvailable } = RealmService.getFilteredExercises(query);
-    
-            // Convert Realm objects to plain objects
-            const exerciseArray = newExercises.map(exercise => ({
-                id: exercise.id,
-                name: exercise.name,
-                bodyPart: exercise.bodyPart,
-                equipment: exercise.equipment,
-                target: exercise.target,
-                mediaFileName: exercise.mediaFileName,
-            }));
-    
-            setExercises(reset ? exerciseArray : [...exercises, ...exerciseArray]);
-            setHasMore(moreAvailable);
-            setCurrentPage(reset ? 1 : newPage + 1);
+
+            const { exercises: newExercises, hasMore: moreAvailable } = await SqliteService.getFilteredExercises(query);
+
+            if (newExercises?.length > 0) {
+                const exerciseArray = newExercises.map(exercise => ({
+                    id: exercise.id,
+                    name: exercise.name,
+                    bodyPart: exercise.bodyPart,
+                    equipment: exercise.equipment,
+                    target: exercise.target,
+                    mediaFileName: exercise.mediaFileName,
+                }));
+
+                setExercises(prev => reset ? exerciseArray : [...prev, ...exerciseArray]);
+                setHasMore(moreAvailable);
+                setCurrentPage(reset ? 1 : newPage + 1);
+            } else {
+                setHasMore(false);
+            }
         } catch (error) {
             console.error('Error loading exercises:', error);
+            setHasMore(false);
         } finally {
             setIsLoading(false);
         }
-    }, [currentPage, searchQuery, selectedEquipment, selectedBodyPart, hasMore, exercises]);
-
-    // Handle search input
-    const handleSearch = (query) => {
+    }, [currentPage, searchQuery, selectedEquipment, selectedBodyPart, isLoading, hasMore]);
+    
+    const handleSearch = useCallback((query) => {
         setSearchQuery(query);
         setExercises([]);
         setCurrentPage(0);
         setHasMore(true);
         loadExercises(true);
-    };
+    }, [loadExercises]);
 
-    // Handle filter changes
-    const handleFilterChange = (type, value) => {
+    const handleFilterChange = useCallback((type, value) => {
         if (type === 'equipment') {
             setSelectedEquipment(value);
-        } else {
+        } else if (type === 'bodyPart') {
             setSelectedBodyPart(value);
         }
         setExercises([]);
         setCurrentPage(0);
         setHasMore(true);
         loadExercises(true);
-    };
+    }, [loadExercises]);
 
-    const renderExerciseItem = ({ item }) => (
-        <TouchableOpacity 
+    const openFilterModal = useCallback((type) => {
+        setModalType(type);
+        setModalOptions(type === 'equipment' ? uniqueEquipment : uniqueBodyParts);
+        setIsModalVisible(true);
+    }, [uniqueEquipment, uniqueBodyParts]);
+
+    const FilterModal = useCallback(({ isVisible, options, onSelect, onClose }) => (
+        <Modal visible={isVisible} animationType="slide" transparent>
+            <View style={styles.modalContainer}>
+                <View style={styles.modalContent}>
+                    <Text style={styles.modalTitle}>Select an Option</Text>
+                    <FlatList
+                        data={options}
+                        keyExtractor={(item, index) => index.toString()}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                style={styles.modalOption}
+                                onPress={() => {
+                                    onSelect(item);
+                                    onClose();
+                                }}
+                            >
+                                <Text style={styles.modalOptionText}>{item}</Text>
+                            </TouchableOpacity>
+                        )}
+                        style={styles.modalList}
+                    />
+                    <TouchableOpacity style={styles.modalCloseButton} onPress={onClose}>
+                        <Text style={styles.modalCloseButtonText}>Close</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    ), []);
+
+    const renderExerciseItem = useCallback(({ item }) => (
+        <TouchableOpacity
             style={styles.exerciseItem}
             onPress={() => {
-                // Handle exercise selection
                 navigation.goBack();
             }}
         >
@@ -114,92 +152,69 @@ const AddExerciseScreen = ({ navigation }) => {
                 <Text style={styles.exerciseMuscle}>{item.bodyPart} - {item.equipment}</Text>
             </View>
         </TouchableOpacity>
-    );
+    ), [navigation]);
 
-    const renderFooter = () => {
-        if (!isLoading) return null;
-        return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color="#4C24FF" />
-            </View>
-        );
-    };
+    const renderFooter = useCallback(() => {
+        if (isLoading) {
+            return (
+                <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="large" color="#4C24FF" />
+                </View>
+            );
+        }
 
-    const renderLoadMoreButton = () => {
-        if (!hasMore || isLoading) return null;
-        return (
-            <TouchableOpacity 
-                style={styles.loadMoreButton}
-                onPress={() => loadExercises()}
-            >
-                <Text style={styles.loadMoreButtonText}>Load More</Text>
-            </TouchableOpacity>
-        );
-    };
+        if (hasMore) {
+            return (
+                <TouchableOpacity
+                    style={styles.loadMoreButton}
+                    onPress={() => loadExercises()}
+                >
+                    <Text style={styles.loadMoreButtonText}>Load More</Text>
+                </TouchableOpacity>
+            );
+        }
+
+        return null;
+    }, [isLoading, hasMore, loadExercises]);
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
-                {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity 
-                        style={styles.headerButton} 
-                        onPress={() => navigation.goBack()}
-                    >
+                    <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
                         <Text style={styles.headerButtonText}>Cancel</Text>
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Add Exercise</Text>
-                    <TouchableOpacity 
-                        style={styles.headerButton} 
-                        onPress={() => navigation.navigate('CustomExercise')}
-                    >
+                    <TouchableOpacity style={styles.headerButton} onPress={() => navigation.navigate('CustomExercise')}>
                         <Text style={styles.headerButtonText}>Custom</Text>
                     </TouchableOpacity>
                 </View>
 
-                {/* Search Bar */}
-                <SearchBar 
-                    placeholder="Search exercises" 
-                    value={searchQuery}
-                    onChangeText={handleSearch}
-                />
+                <SearchBar placeholder="Search exercises" value={searchQuery} onChangeText={handleSearch} />
 
-                {/* Filter Buttons */}
                 <View style={styles.filterContainer}>
-                    <TouchableOpacity 
-                        style={styles.filterButton}
-                        onPress={() => {
-                            const currentIndex = uniqueEquipment.indexOf(selectedEquipment);
-                            const nextEquipment = uniqueEquipment[(currentIndex + 1) % uniqueEquipment.length];
-                            handleFilterChange('equipment', nextEquipment);
-                        }}
-                    >
+                    <TouchableOpacity style={styles.filterButton} onPress={() => openFilterModal('equipment')}>
                         <Text style={styles.filterButtonText}>{selectedEquipment}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                        style={styles.filterButton}
-                        onPress={() => {
-                            const currentIndex = uniqueBodyParts.indexOf(selectedBodyPart);
-                            const nextBodyPart = uniqueBodyParts[(currentIndex + 1) % uniqueBodyParts.length];
-                            handleFilterChange('bodyPart', nextBodyPart);
-                        }}
-                    >
+                    <TouchableOpacity style={styles.filterButton} onPress={() => openFilterModal('bodyPart')}>
                         <Text style={styles.filterButtonText}>{selectedBodyPart}</Text>
                     </TouchableOpacity>
                 </View>
 
-                {/* Exercise List */}
                 <FlatList
                     data={exercises}
                     renderItem={renderExerciseItem}
-                    keyExtractor={item => item.id}
+                    keyExtractor={(item) => item.id.toString()}
                     style={styles.exerciseList}
-                    ListFooterComponent={
-                        <>
-                            {renderFooter()}
-                            {renderLoadMoreButton()}
-                        </>
-                    }
+                    ListFooterComponent={renderFooter}
+                    onEndReachedThreshold={0.5}
+                />
+
+                <FilterModal
+                    isVisible={isModalVisible}
+                    options={modalOptions}
+                    onSelect={(value) => handleFilterChange(modalType, value)}
+                    onClose={() => setIsModalVisible(false)}
                 />
             </View>
         </SafeAreaView>
@@ -245,7 +260,7 @@ const styles = StyleSheet.create({
     filterContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingHorizontal: responsiveWidth(4), 
+        paddingHorizontal: responsiveWidth(4),
         marginBottom: responsiveHeight(2),
     },
     filterButton: {
@@ -253,7 +268,7 @@ const styles = StyleSheet.create({
         borderRadius: responsiveWidth(2),
         paddingVertical: responsiveHeight(1.5),
         paddingHorizontal: responsiveWidth(6),
-        flex: 0.475, // Each button takes up ~47.5% of the container
+        flex: 0.475,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -261,14 +276,6 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontSize: responsiveWidth(3.8),
         textAlign: 'center',
-    },
-    listTitle: {
-        marginTop: responsiveHeight(2),
-        marginBottom: responsiveHeight(-0.5),
-        marginLeft: responsiveWidth(0.7),
-        paddingHorizontal: responsiveWidth(4),
-        fontSize: responsiveWidth(3.8),
-        color: '#888',
     },
     exerciseList: {
         flex: 1,
@@ -283,11 +290,6 @@ const styles = StyleSheet.create({
         marginBottom: responsiveHeight(1.5),
         padding: responsiveWidth(3),
     },
-    exerciseImage: {
-        width: responsiveWidth(12),
-        height: responsiveWidth(12),
-        marginRight: responsiveWidth(4),
-    },
     exerciseTextContainer: {
         flex: 1,
     },
@@ -299,6 +301,13 @@ const styles = StyleSheet.create({
     exerciseMuscle: {
         color: '#888',
         fontSize: responsiveWidth(3.8),
+    },
+    exerciseImagePlaceholder: {
+        width: responsiveWidth(12),
+        height: responsiveWidth(12),
+        marginRight: responsiveWidth(4),
+        backgroundColor: '#333',
+        borderRadius: responsiveWidth(1),
     },
     loaderContainer: {
         paddingVertical: responsiveHeight(2),
@@ -316,12 +325,42 @@ const styles = StyleSheet.create({
         fontSize: responsiveWidth(4),
         fontWeight: 'bold',
     },
-    exerciseImagePlaceholder: {
-        width: responsiveWidth(12),
-        height: responsiveWidth(12),
-        marginRight: responsiveWidth(4),
-        backgroundColor: '#333',
-        borderRadius: responsiveWidth(1),
+    modalContainer: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalContent: {
+        backgroundColor: '#1A1A1A',
+        padding: 20,
+        borderRadius: 10,
+        width: responsiveWidth(80),
+    },
+    modalList: {
+        maxHeight: responsiveHeight(50),
+    },
+    modalTitle: {
+        color: '#FFF',
+        fontSize: responsiveWidth(4.5),
+        marginBottom: 10,
+    },
+    modalOption: {
+        padding: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#444',
+    },
+    modalOptionText: {
+        color: '#FFF',
+        fontSize: responsiveWidth(4),
+    },
+    modalCloseButton: {
+        marginTop: 10,
+        alignItems: 'center',
+    },
+    modalCloseButtonText: {
+        color: '#4C24FF',
+        fontSize: responsiveWidth(4),
     },
 });
 
