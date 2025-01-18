@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Modal } from 'react-native';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
 import SearchBar from '../../components/SearchBar';
 import SqliteService from '../../services/SqliteService';
 import ExerciseBodyPart from '../../enums/ExerciseBodyPart';
 import ExerciseEquipment from '../../enums/ExerciseEquipment';
+import Video from 'react-native-video';
+import RNFS from 'react-native-fs';
 
 const { width, height } = Dimensions.get('window');
 const responsiveWidth = (percent) => (width * percent) / 100;
@@ -19,17 +21,31 @@ const AddExerciseScreen = ({ navigation }) => {
     const [currentPage, setCurrentPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalType, setModalType] = useState(null);
     const [modalOptions, setModalOptions] = useState([]);
     const [uniqueEquipment, setUniqueEquipment] = useState(['All Equipment']);
     const [uniqueBodyParts, setUniqueBodyParts] = useState(['All Body Parts']);
+    const [visibleItems, setVisibleItems] = useState(new Set());
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [totalCount, setTotalCount] = useState(0);
+    const lastLoadTimeRef = useRef(Date.now());
+    const loadingRef = useRef(false);
 
     // Load initial data and metadata
     useEffect(() => {
         loadMetadata();
-        loadExercises(true);
+        loadInitialExercises();
     }, []);
+
+    const loadInitialExercises = async () => {
+        setIsInitialLoad(true);
+        setCurrentPage(0);
+        setExercises([]);
+        await loadExercises(true);
+        setIsInitialLoad(false);
+    };
 
     // Load metadata (unique equipment and body parts)
     const loadMetadata = () => {
@@ -42,55 +58,72 @@ const AddExerciseScreen = ({ navigation }) => {
         setUniqueBodyParts(['All Body Parts', ...bodyPartValues]);
     };
 
+    const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+        const newVisibleItems = new Set(viewableItems.map(item => item.item.id));
+        setVisibleItems(prevItems => {
+            if (areSetsDifferent(prevItems, newVisibleItems)) {
+                return newVisibleItems;
+            }
+            return prevItems;
+        });
+    }, []);
+    
+    const areSetsDifferent = (setA, setB) => {
+        if (setA.size !== setB.size) return true;
+        for (const item of setA) {
+            if (!setB.has(item)) return true;
+        }
+        return false;
+    };
+
+    const viewabilityConfig = useMemo(() => ({
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 300,
+        waitForInteraction: true,
+    }), []);
+
+    const viewabilityConfigCallbackPairs = useRef([
+        { viewabilityConfig, onViewableItemsChanged }
+    ]);
+
     // Load exercises with pagination and filters
     const loadExercises = useCallback(async (reset = false) => {
-        if (isLoading || (!hasMore && !reset)) return;
+        if (loadingRef.current || (!hasMore && !reset)) return;
 
-        setIsLoading(true);
-        const newPage = reset ? 0 : currentPage;
+        const pageToLoad = reset ? 0 : currentPage;
 
         try {
             const query = {
                 searchQuery,
                 equipment: selectedEquipment === 'All Equipment' ? null : selectedEquipment,
                 bodyPart: selectedBodyPart === 'All Body Parts' ? null : selectedBodyPart,
-                skip: newPage * PAGE_SIZE,
-                limit: PAGE_SIZE // This ensures we only get 20 items per load
+                skip: pageToLoad * PAGE_SIZE,
+                limit: PAGE_SIZE
             };
 
-            const { exercises: newExercises, hasMore: moreAvailable } = await SqliteService.getFilteredExercises(query);
+            const { exercises: newExercises, hasMore: moreAvailable, totalCount: total } =
+                await SqliteService.getFilteredExercises(query);
 
-            if (newExercises?.length > 0) {
-                const exerciseArray = newExercises.map(exercise => ({
-                    id: exercise.id,
-                    name: exercise.name,
-                    bodyPart: exercise.bodyPart,
-                    equipment: exercise.equipment,
-                    target: exercise.target,
-                    mediaFileName: exercise.mediaFileName,
-                }));
+            setTotalCount(total);
 
-                setExercises(prev => reset ? exerciseArray : [...prev, ...exerciseArray]);
+            if (newExercises.length > 0) {
+                setExercises(prev => reset ? newExercises : [...prev, ...newExercises]);
                 setHasMore(moreAvailable);
-                setCurrentPage(reset ? 1 : newPage + 1);
+                setCurrentPage(reset ? 1 : pageToLoad + 1);
             } else {
                 setHasMore(false);
             }
         } catch (error) {
             console.error('Error loading exercises:', error);
             setHasMore(false);
-        } finally {
-            setIsLoading(false);
         }
-    }, [currentPage, searchQuery, selectedEquipment, selectedBodyPart, isLoading, hasMore]);
-    
+    }, [currentPage, searchQuery, selectedEquipment, selectedBodyPart, hasMore]);
+
+
     const handleSearch = useCallback((query) => {
         setSearchQuery(query);
-        setExercises([]);
-        setCurrentPage(0);
-        setHasMore(true);
-        loadExercises(true);
-    }, [loadExercises]);
+        loadInitialExercises();
+    }, []);
 
     const handleFilterChange = useCallback((type, value) => {
         if (type === 'equipment') {
@@ -98,11 +131,8 @@ const AddExerciseScreen = ({ navigation }) => {
         } else if (type === 'bodyPart') {
             setSelectedBodyPart(value);
         }
-        setExercises([]);
-        setCurrentPage(0);
-        setHasMore(true);
-        loadExercises(true);
-    }, [loadExercises]);
+        loadInitialExercises();
+    }, []);
 
     const openFilterModal = useCallback((type) => {
         setModalType(type);
@@ -116,20 +146,24 @@ const AddExerciseScreen = ({ navigation }) => {
                 <View style={styles.modalContent}>
                     <Text style={styles.modalTitle}>Select an Option</Text>
                     <FlatList
-                        data={options}
-                        keyExtractor={(item, index) => index.toString()}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity
-                                style={styles.modalOption}
-                                onPress={() => {
-                                    onSelect(item);
-                                    onClose();
-                                }}
-                            >
-                                <Text style={styles.modalOptionText}>{item}</Text>
-                            </TouchableOpacity>
-                        )}
-                        style={styles.modalList}
+                        data={exercises}
+                        renderItem={renderExerciseItem}
+                        keyExtractor={useCallback((item) => item.id.toString(), [])}
+                        style={styles.exerciseList}
+                        ListFooterComponent={renderFooter}
+                        onEndReached={handleEndReached}
+                        onEndReachedThreshold={0.5}
+                        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+                        removeClippedSubviews={true}
+                        maxToRenderPerBatch={4}
+                        windowSize={3}
+                        initialNumToRender={6}
+                        updateCellsBatchingPeriod={50}
+                        onEndReachedThresholdRelative={0.5}
+                        maintainVisibleContentPosition={{
+                            minIndexForVisible: 0,
+                            autoscrollToTopThreshold: 10,
+                        }}
                     />
                     <TouchableOpacity style={styles.modalCloseButton} onPress={onClose}>
                         <Text style={styles.modalCloseButtonText}>Close</Text>
@@ -139,6 +173,7 @@ const AddExerciseScreen = ({ navigation }) => {
         </Modal>
     ), []);
 
+
     const renderExerciseItem = useCallback(({ item }) => (
         <TouchableOpacity
             style={styles.exerciseItem}
@@ -146,16 +181,19 @@ const AddExerciseScreen = ({ navigation }) => {
                 navigation.goBack();
             }}
         >
-            <View style={styles.exerciseImagePlaceholder} />
+            <ExerciseVideo
+                id={item.id}
+                isVisible={visibleItems.has(item.id)}
+            />
             <View style={styles.exerciseTextContainer}>
                 <Text style={styles.exerciseName}>{item.name}</Text>
                 <Text style={styles.exerciseMuscle}>{item.bodyPart} - {item.equipment}</Text>
             </View>
         </TouchableOpacity>
-    ), [navigation]);
+    ), [navigation, visibleItems]);
 
     const renderFooter = useCallback(() => {
-        if (isLoading) {
+        if (isInitialLoad) {
             return (
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="large" color="#4C24FF" />
@@ -163,7 +201,15 @@ const AddExerciseScreen = ({ navigation }) => {
             );
         }
 
-        if (hasMore) {
+        if (isLoading && !isInitialLoad) {
+            return (
+                <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="small" color="#4C24FF" />
+                </View>
+            );
+        }
+
+        if (hasMore && exercises.length >= PAGE_SIZE) {
             return (
                 <TouchableOpacity
                     style={styles.loadMoreButton}
@@ -174,8 +220,112 @@ const AddExerciseScreen = ({ navigation }) => {
             );
         }
 
+        if (!hasMore && exercises.length > 0) {
+            return (
+                <View style={styles.endMessageContainer}>
+                    <Text style={styles.endMessageText}>No more exercises to load</Text>
+                </View>
+            );
+        }
+
         return null;
-    }, [isLoading, hasMore, loadExercises]);
+    }, [isLoading, hasMore, exercises.length, isInitialLoad]);
+
+    const handleEndReached = useCallback(async () => {
+        const now = Date.now();
+        if (loadingRef.current || !hasMore || now - lastLoadTimeRef.current < 1000) {
+            return;
+        }
+
+        loadingRef.current = true;
+        lastLoadTimeRef.current = now;
+
+        try {
+            setLoadingMore(true);
+            await loadExercises();
+        } finally {
+            setLoadingMore(false);
+            loadingRef.current = false;
+        }
+    }, [hasMore, loadExercises]);
+
+    const ExerciseVideo = React.memo(({ id, isVisible }) => {
+        const [isLoading, setIsLoading] = useState(true);
+        const [videoError, setVideoError] = useState(false);
+        const videoRef = useRef(null);
+        const lastVisibleRef = useRef(isVisible);
+        const uri = `file:///android_asset/videos/${id}.mp4`;
+        const videoSource = useMemo(() => ({
+            uri: uri
+        }), [id]);
+
+        console.log(uri);
+
+        // Only update video state when visibility actually changes
+        useEffect(() => {
+            if (lastVisibleRef.current !== isVisible) {
+                lastVisibleRef.current = isVisible;
+                if (videoRef.current) {
+                    if (isVisible) {
+                        videoRef.current.seek(0);
+                    }
+                }
+            }
+        }, [isVisible]);
+
+        const onLoadStart = useCallback(() => {
+            setIsLoading(true);
+            setVideoError(false);
+        }, []);
+
+        const onLoad = useCallback(() => {
+            setIsLoading(false);
+        }, []);
+
+        const onError = useCallback((error) => {
+            console.warn(`Video loading error for ${id}:`, error);
+            setVideoError(true);
+            setIsLoading(false);
+        }, [id]);
+
+        if (videoError) {
+            return (
+                <View style={styles.exerciseImagePlaceholder}>
+                    <Text style={styles.errorText}>!</Text>
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.videoContainer}>
+                <Video
+                    ref={videoRef}
+                    source={videoSource}
+                    style={styles.exerciseVideo}
+                    repeat={true}
+                    resizeMode="cover"
+                    muted={true}
+                    playInBackground={false}
+                    playWhenInactive={false}
+                    paused={!isVisible}
+                    onLoadStart={onLoadStart}
+                    onLoad={onLoad}
+                    onError={onError}
+                    //poster="placeholder.png"
+                    posterResizeMode="cover"
+                />
+                {isLoading && (
+                    <View style={styles.loaderOverlay}>
+                        <ActivityIndicator size="small" color="#4C24FF" />
+                    </View>
+                )}
+            </View>
+        );
+    }, (prevProps, nextProps) => {
+        // Custom comparison to prevent unnecessary rerenders
+        return prevProps.id === nextProps.id &&
+            prevProps.isVisible === nextProps.isVisible;
+    });
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -207,7 +357,13 @@ const AddExerciseScreen = ({ navigation }) => {
                     keyExtractor={(item) => item.id.toString()}
                     style={styles.exerciseList}
                     ListFooterComponent={renderFooter}
+                    onEndReached={handleEndReached}
                     onEndReachedThreshold={0.5}
+                    viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+                    removeClippedSubviews={true}
+                    maxToRenderPerBatch={5}
+                    windowSize={5}
+                    initialNumToRender={4}
                 />
 
                 <FilterModal
@@ -361,6 +517,50 @@ const styles = StyleSheet.create({
     modalCloseButtonText: {
         color: '#4C24FF',
         fontSize: responsiveWidth(4),
+    },
+    endMessageContainer: {
+        padding: responsiveHeight(2),
+        alignItems: 'center',
+    },
+    endMessageText: {
+        color: '#888',
+        fontSize: responsiveWidth(3.5),
+    },
+    exerciseVideo: {
+        width: responsiveWidth(20),
+        height: responsiveWidth(20),
+        marginRight: responsiveWidth(4),
+        borderRadius: responsiveWidth(1),
+        backgroundColor: '#333', // Fallback color
+        overflow: 'hidden', // Ensure video respects borderRadius
+    },
+    exerciseImagePlaceholder: {
+        width: responsiveWidth(20),
+        height: responsiveWidth(20),
+        marginRight: responsiveWidth(4),
+        backgroundColor: '#333',
+        borderRadius: responsiveWidth(1),
+    },
+    videoContainer: {
+        position: 'relative',
+        width: responsiveWidth(20),
+        height: responsiveWidth(20),
+        marginRight: responsiveWidth(4),
+        borderRadius: responsiveWidth(1),
+        overflow: 'hidden',
+        backgroundColor: '#333',
+    },
+    loaderOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    errorText: {
+        color: '#FFF',
+        fontSize: responsiveWidth(6),
+        textAlign: 'center',
+        lineHeight: responsiveWidth(20),
     },
 });
 
