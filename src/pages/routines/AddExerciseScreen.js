@@ -1,12 +1,11 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo, useImperativeHandle } from 'react';
 import { Modal } from 'react-native';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
+import Video from 'react-native-video';
 import SearchBar from '../../components/SearchBar';
 import SqliteService from '../../services/SqliteService';
 import ExerciseBodyPart from '../../enums/ExerciseBodyPart';
 import ExerciseEquipment from '../../enums/ExerciseEquipment';
-import Video from 'react-native-video';
-import RNFS from 'react-native-fs';
 
 const { width, height } = Dimensions.get('window');
 const responsiveWidth = (percent) => (width * percent) / 100;
@@ -14,186 +13,198 @@ const responsiveHeight = (percent) => (height * percent) / 100;
 const PAGE_SIZE = 20;
 
 const AddExerciseScreen = ({ navigation }) => {
-    const [exercises, setExercises] = useState([]);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedEquipment, setSelectedEquipment] = useState('All Equipment');
-    const [selectedBodyPart, setSelectedBodyPart] = useState('All Body Parts');
-    const [currentPage, setCurrentPage] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isInitialLoad, setIsInitialLoad] = useState(true);
-    const [isModalVisible, setIsModalVisible] = useState(false);
-    const [modalType, setModalType] = useState(null);
-    const [modalOptions, setModalOptions] = useState([]);
-    const [uniqueEquipment, setUniqueEquipment] = useState(['All Equipment']);
-    const [uniqueBodyParts, setUniqueBodyParts] = useState(['All Body Parts']);
-    const [visibleItems, setVisibleItems] = useState(new Set());
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [totalCount, setTotalCount] = useState(0);
-    const lastLoadTimeRef = useRef(Date.now());
+    // Combined state object to reduce re-renders
+    const [state, setState] = useState({
+        exercises: [],
+        hasMore: true,
+        isLoading: false,
+        isInitialLoad: true,
+        totalCount: 0,
+        currentPage: 0
+    });
+
+    // Filter state separated as it triggers data reload
+    const [filters, setFilters] = useState({
+        searchQuery: '',
+        selectedEquipment: 'All Equipment',
+        selectedBodyPart: 'All Body Parts'
+    });
+
+    // Modal state
+    const [modal, setModal] = useState({
+        isVisible: false,
+        type: null,
+        options: []
+    });
+
+    // Refs
+    const cellRefs = useRef({});
     const loadingRef = useRef(false);
+    const lastLoadTimeRef = useRef(Date.now());
+    const visibleItemsRef = useRef(new Set());
 
-    // Load initial data and metadata
+    // Memoized metadata
+    const metadata = useMemo(() => ({
+        uniqueEquipment: ['All Equipment', ...Object.values(ExerciseEquipment).filter(value => typeof value === 'string')],
+        uniqueBodyParts: ['All Body Parts', ...Object.values(ExerciseBodyPart).filter(value => typeof value === 'string')]
+    }), []);
+
+    // Load exercises function
+    const loadExercises = useCallback(async (reset = false) => {
+        if (loadingRef.current || (!state.hasMore && !reset)) return;
+
+        loadingRef.current = true;
+        const pageToLoad = reset ? 0 : state.currentPage;
+
+        try {
+            const query = {
+                searchQuery: filters.searchQuery,
+                equipment: filters.selectedEquipment === 'All Equipment' ? null : filters.selectedEquipment,
+                bodyPart: filters.selectedBodyPart === 'All Body Parts' ? null : filters.selectedBodyPart,
+                skip: pageToLoad * PAGE_SIZE,
+                limit: PAGE_SIZE
+            };
+
+            const { exercises: newExercises, hasMore: moreAvailable, totalCount } =
+                await SqliteService.getFilteredExercises(query);
+
+            setState(prev => ({
+                ...prev,
+                exercises: reset ? newExercises : [...prev.exercises, ...newExercises],
+                hasMore: moreAvailable,
+                currentPage: reset ? 1 : pageToLoad + 1,
+                totalCount,
+                isLoading: false,
+                isInitialLoad: false
+            }));
+        } catch (error) {
+            console.error('Error loading exercises:', error);
+            setState(prev => ({
+                ...prev,
+                hasMore: false,
+                isLoading: false,
+                isInitialLoad: false
+            }));
+        } finally {
+            loadingRef.current = false;
+        }
+    }, [filters, state.currentPage, state.hasMore]);
+
+    // Initial load
     useEffect(() => {
-        loadMetadata();
-        loadInitialExercises();
-    }, []);
+        loadExercises(true);
+    }, [filters]); // Only reload when filters change
 
-    const loadInitialExercises = async () => {
-        setIsInitialLoad(true);
-        setCurrentPage(0);
-        setExercises([]);
-        await loadExercises(true);
-        setIsInitialLoad(false);
-    };
-
-    // Load metadata (unique equipment and body parts)
-    const loadMetadata = () => {
-        const equipmentValues = Object.values(ExerciseEquipment)
-            .filter(value => typeof value === 'string');
-        const bodyPartValues = Object.values(ExerciseBodyPart)
-            .filter(value => typeof value === 'string');
-
-        setUniqueEquipment(['All Equipment', ...equipmentValues]);
-        setUniqueBodyParts(['All Body Parts', ...bodyPartValues]);
-    };
-
-    const onViewableItemsChanged = useCallback(({ viewableItems }) => {
-        const newVisibleItems = new Set(viewableItems.map(item => item.item.id));
-        setVisibleItems(prevItems => {
-            if (areSetsDifferent(prevItems, newVisibleItems)) {
-                return newVisibleItems;
+    // Video visibility handler
+    const onViewableItemsChanged = useCallback(({ changed }) => {
+        changed.forEach(change => {
+            if (change.isViewable) {
+                visibleItemsRef.current.add(change.key);
+            } else {
+                visibleItemsRef.current.delete(change.key);
             }
-            return prevItems;
         });
     }, []);
-    
-    const areSetsDifferent = (setA, setB) => {
-        if (setA.size !== setB.size) return true;
-        for (const item of setA) {
-            if (!setB.has(item)) return true;
-        }
-        return false;
-    };
+
 
     const viewabilityConfig = useMemo(() => ({
         itemVisiblePercentThreshold: 50,
-        minimumViewTime: 300,
-        waitForInteraction: true,
+        minimumViewTime: 300
     }), []);
 
     const viewabilityConfigCallbackPairs = useRef([
         { viewabilityConfig, onViewableItemsChanged }
     ]);
 
-    // Load exercises with pagination and filters
-    const loadExercises = useCallback(async (reset = false) => {
-        if (loadingRef.current || (!hasMore && !reset)) return;
+    // Exercise Video Component
+    const ExerciseVideo = React.memo(
+        React.forwardRef(({ id, isVisible }, ref) => {
+            const videoRef = useRef(null);
+            const [isPaused, setIsPaused] = useState(!isVisible);
+            const [videoState, setVideoState] = useState({
+                isLoading: true,
+                error: null,
+            }); 
 
-        const pageToLoad = reset ? 0 : currentPage;
+            useEffect(() => {
+                setIsPaused(!isVisible);
+            }, [isVisible]);
 
-        try {
-            const query = {
-                searchQuery,
-                equipment: selectedEquipment === 'All Equipment' ? null : selectedEquipment,
-                bodyPart: selectedBodyPart === 'All Body Parts' ? null : selectedBodyPart,
-                skip: pageToLoad * PAGE_SIZE,
-                limit: PAGE_SIZE
-            };
+            useImperativeHandle(ref, () => ({
+                play: () => videoRef.current && videoRef.current.play(),
+                pause: () => videoRef.current && videoRef.current.pause(),
+            }));
 
-            const { exercises: newExercises, hasMore: moreAvailable, totalCount: total } =
-                await SqliteService.getFilteredExercises(query);
-
-            setTotalCount(total);
-
-            if (newExercises.length > 0) {
-                setExercises(prev => reset ? newExercises : [...prev, ...newExercises]);
-                setHasMore(moreAvailable);
-                setCurrentPage(reset ? 1 : pageToLoad + 1);
-            } else {
-                setHasMore(false);
-            }
-        } catch (error) {
-            console.error('Error loading exercises:', error);
-            setHasMore(false);
-        }
-    }, [currentPage, searchQuery, selectedEquipment, selectedBodyPart, hasMore]);
-
-
-    const handleSearch = useCallback((query) => {
-        setSearchQuery(query);
-        loadInitialExercises();
-    }, []);
-
-    const handleFilterChange = useCallback((type, value) => {
-        if (type === 'equipment') {
-            setSelectedEquipment(value);
-        } else if (type === 'bodyPart') {
-            setSelectedBodyPart(value);
-        }
-        loadInitialExercises();
-    }, []);
-
-    const openFilterModal = useCallback((type) => {
-        setModalType(type);
-        setModalOptions(type === 'equipment' ? uniqueEquipment : uniqueBodyParts);
-        setIsModalVisible(true);
-    }, [uniqueEquipment, uniqueBodyParts]);
-
-    const FilterModal = useCallback(({ isVisible, options, onSelect, onClose }) => (
-        <Modal visible={isVisible} animationType="slide" transparent>
-            <View style={styles.modalContainer}>
-                <View style={styles.modalContent}>
-                    <Text style={styles.modalTitle}>Select an Option</Text>
-                    <FlatList
-                        data={exercises}
-                        renderItem={renderExerciseItem}
-                        keyExtractor={useCallback((item) => item.id.toString(), [])}
-                        style={styles.exerciseList}
-                        ListFooterComponent={renderFooter}
-                        onEndReached={handleEndReached}
-                        onEndReachedThreshold={0.5}
-                        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
-                        removeClippedSubviews={true}
-                        maxToRenderPerBatch={4}
-                        windowSize={3}
-                        initialNumToRender={6}
-                        updateCellsBatchingPeriod={50}
-                        onEndReachedThresholdRelative={0.5}
-                        maintainVisibleContentPosition={{
-                            minIndexForVisible: 0,
-                            autoscrollToTopThreshold: 10,
+            return (
+                <View style={styles.videoContainer}>
+                    <Video
+                        ref={videoRef}
+                        source={{ uri: `file:///android_asset/videos/${id}.mp4` }}
+                        style={styles.exerciseVideo}
+                        resizeMode="cover"
+                        repeat={true}
+                        paused={isPaused}
+                        onLoadStart={() => setVideoState(prev => ({ ...prev, isLoading: true }))}
+                        onLoad={() => setVideoState(prev => ({ ...prev, isLoading: false }))}
+                        onError={(error) => {
+                            console.error(`Error loading video ${id}:`, error);
+                            setVideoState({ isLoading: false, error });
                         }}
                     />
-                    <TouchableOpacity style={styles.modalCloseButton} onPress={onClose}>
-                        <Text style={styles.modalCloseButtonText}>Close</Text>
-                    </TouchableOpacity>
+                    {videoState.isLoading && (
+                        <View style={styles.loaderOverlay}>
+                            <ActivityIndicator size="small" color="#4C24FF" />
+                        </View>
+                    )}
                 </View>
-            </View>
-        </Modal>
-    ), []);
+            );
+        })
+    );
 
-
+    // Render functions
     const renderExerciseItem = useCallback(({ item }) => (
         <TouchableOpacity
             style={styles.exerciseItem}
-            onPress={() => {
-                navigation.goBack();
-            }}
+            onPress={() => navigation.goBack()}
         >
             <ExerciseVideo
+                ref={(ref) => { cellRefs.current[item.id] = ref; }}
                 id={item.id}
-                isVisible={visibleItems.has(item.id)}
+                isVisible={visibleItemsRef.current.has(item.id)}
             />
             <View style={styles.exerciseTextContainer}>
                 <Text style={styles.exerciseName}>{item.name}</Text>
                 <Text style={styles.exerciseMuscle}>{item.bodyPart} - {item.equipment}</Text>
             </View>
         </TouchableOpacity>
-    ), [navigation, visibleItems]);
+    ), [navigation]);
+
+    // Handler functions
+    const handleSearch = useCallback((query) => {
+        setFilters(prev => ({ ...prev, searchQuery: query }));
+    }, []);
+
+    const handleFilterChange = useCallback((type, value) => {
+        setFilters(prev => ({
+            ...prev,
+            [type === 'equipment' ? 'selectedEquipment' : 'selectedBodyPart']: value
+        }));
+        setModal(prev => ({ ...prev, isVisible: false }));
+    }, []);
+
+    const openFilterModal = useCallback((type) => {
+        setModal({
+            isVisible: true,
+            type,
+            options: type === 'equipment' ? metadata.uniqueEquipment : metadata.uniqueBodyParts
+        });
+    }, [metadata]);
+
+    // Rest of your component remains the same, just update the references to state properties
+    // ... (existing render method and styles)
 
     const renderFooter = useCallback(() => {
-        if (isInitialLoad) {
+        if (state.isInitialLoad) {
             return (
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="large" color="#4C24FF" />
@@ -201,7 +212,7 @@ const AddExerciseScreen = ({ navigation }) => {
             );
         }
 
-        if (isLoading && !isInitialLoad) {
+        if (state.isLoading && !state.isInitialLoad) {
             return (
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="small" color="#4C24FF" />
@@ -209,7 +220,7 @@ const AddExerciseScreen = ({ navigation }) => {
             );
         }
 
-        if (hasMore && exercises.length >= PAGE_SIZE) {
+        if (state.hasMore && state.exercises.length >= PAGE_SIZE) {
             return (
                 <TouchableOpacity
                     style={styles.loadMoreButton}
@@ -220,7 +231,7 @@ const AddExerciseScreen = ({ navigation }) => {
             );
         }
 
-        if (!hasMore && exercises.length > 0) {
+        if (!state.hasMore && state.exercises.length > 0) {
             return (
                 <View style={styles.endMessageContainer}>
                     <Text style={styles.endMessageText}>No more exercises to load</Text>
@@ -229,103 +240,30 @@ const AddExerciseScreen = ({ navigation }) => {
         }
 
         return null;
-    }, [isLoading, hasMore, exercises.length, isInitialLoad]);
+    }, [state.isLoading, state.hasMore, state.exercises.length, state.isInitialLoad]);
 
-    const handleEndReached = useCallback(async () => {
-        const now = Date.now();
-        if (loadingRef.current || !hasMore || now - lastLoadTimeRef.current < 1000) {
-            return;
-        }
-
-        loadingRef.current = true;
-        lastLoadTimeRef.current = now;
-
-        try {
-            setLoadingMore(true);
-            await loadExercises();
-        } finally {
-            setLoadingMore(false);
-            loadingRef.current = false;
-        }
-    }, [hasMore, loadExercises]);
-
-    const ExerciseVideo = React.memo(({ id, isVisible }) => {
-        const [isLoading, setIsLoading] = useState(true);
-        const [videoError, setVideoError] = useState(false);
-        const videoRef = useRef(null);
-        const lastVisibleRef = useRef(isVisible);
-        const uri = `file:///android_asset/videos/${id}.mp4`;
-        const videoSource = useMemo(() => ({
-            uri: uri
-        }), [id]);
-
-        console.log(uri);
-
-        // Only update video state when visibility actually changes
-        useEffect(() => {
-            if (lastVisibleRef.current !== isVisible) {
-                lastVisibleRef.current = isVisible;
-                if (videoRef.current) {
-                    if (isVisible) {
-                        videoRef.current.seek(0);
-                    }
-                }
-            }
-        }, [isVisible]);
-
-        const onLoadStart = useCallback(() => {
-            setIsLoading(true);
-            setVideoError(false);
-        }, []);
-
-        const onLoad = useCallback(() => {
-            setIsLoading(false);
-        }, []);
-
-        const onError = useCallback((error) => {
-            console.warn(`Video loading error for ${id}:`, error);
-            setVideoError(true);
-            setIsLoading(false);
-        }, [id]);
-
-        if (videoError) {
-            return (
-                <View style={styles.exerciseImagePlaceholder}>
-                    <Text style={styles.errorText}>!</Text>
+    const FilterModal = useCallback(({ isVisible, options, onSelect, onClose }) => (
+        <Modal visible={isVisible} animationType="slide" transparent>
+            <View style={styles.modalContainer}>
+                <View style={styles.modalContent}>
+                    <Text style={styles.modalTitle}>Select an Option</Text>
+                    <FlatList
+                        data={options} // Use the options passed to the modal, not state.exercises
+                        renderItem={({ item }) => (
+                            <TouchableOpacity onPress={() => onSelect(item)}>
+                                <Text style={styles.modalOption}>{item}</Text>
+                            </TouchableOpacity>
+                        )}
+                        keyExtractor={(item) => item.toString()}
+                    />
+                    <TouchableOpacity style={styles.modalCloseButton} onPress={onClose}>
+                        <Text style={styles.modalCloseButtonText}>Close</Text>
+                    </TouchableOpacity>
                 </View>
-            );
-        }
-
-        return (
-            <View style={styles.videoContainer}>
-                <Video
-                    ref={videoRef}
-                    source={videoSource}
-                    style={styles.exerciseVideo}
-                    repeat={true}
-                    resizeMode="cover"
-                    muted={true}
-                    playInBackground={false}
-                    playWhenInactive={false}
-                    paused={!isVisible}
-                    onLoadStart={onLoadStart}
-                    onLoad={onLoad}
-                    onError={onError}
-                    //poster="placeholder.png"
-                    posterResizeMode="cover"
-                />
-                {isLoading && (
-                    <View style={styles.loaderOverlay}>
-                        <ActivityIndicator size="small" color="#4C24FF" />
-                    </View>
-                )}
             </View>
-        );
-    }, (prevProps, nextProps) => {
-        // Custom comparison to prevent unnecessary rerenders
-        return prevProps.id === nextProps.id &&
-            prevProps.isVisible === nextProps.isVisible;
-    });
+        </Modal>
+    ), []);
+
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -340,43 +278,40 @@ const AddExerciseScreen = ({ navigation }) => {
                     </TouchableOpacity>
                 </View>
 
-                <SearchBar placeholder="Search exercises" value={searchQuery} onChangeText={handleSearch} />
+                <SearchBar placeholder="Search exercises" value={filters.searchQuery} onChangeText={handleSearch} />
 
                 <View style={styles.filterContainer}>
                     <TouchableOpacity style={styles.filterButton} onPress={() => openFilterModal('equipment')}>
-                        <Text style={styles.filterButtonText}>{selectedEquipment}</Text>
+                        <Text style={styles.filterButtonText}>{filters.selectedEquipment}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.filterButton} onPress={() => openFilterModal('bodyPart')}>
-                        <Text style={styles.filterButtonText}>{selectedBodyPart}</Text>
+                        <Text style={styles.filterButtonText}>{filters.selectedBodyPart}</Text>
                     </TouchableOpacity>
                 </View>
 
                 <FlatList
-                    data={exercises}
+                    data={state.exercises}
                     renderItem={renderExerciseItem}
                     keyExtractor={(item) => item.id.toString()}
-                    style={styles.exerciseList}
-                    ListFooterComponent={renderFooter}
-                    onEndReached={handleEndReached}
-                    onEndReachedThreshold={0.5}
                     viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
-                    removeClippedSubviews={true}
-                    maxToRenderPerBatch={5}
+                    maxToRenderPerBatch={3}
                     windowSize={5}
-                    initialNumToRender={4}
+                    removeClippedSubviews={true}
+                    initialNumToRender={5}
                 />
 
                 <FilterModal
-                    isVisible={isModalVisible}
-                    options={modalOptions}
-                    onSelect={(value) => handleFilterChange(modalType, value)}
-                    onClose={() => setIsModalVisible(false)}
+                    isVisible={modal.isVisible}
+                    options={modal.options}
+                    onSelect={(value) => handleFilterChange(modal.type, value)}
+                    onClose={() => setModal(prev => ({ ...prev, isVisible: false }))}
                 />
             </View>
         </SafeAreaView>
     );
 };
 
+// Your existing styles remain the same
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
