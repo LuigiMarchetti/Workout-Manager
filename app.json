@@ -3,31 +3,16 @@
     "name": "Workout-Manager",
     "slug": "Workout-Manager",
     "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
-    "ios": {
-      "supportsTablet": false
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
-      },
-      "package": "com.anonymous.WorkoutManager",
-      "permissions": [
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
-      ]
-    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "assets": ["./assets/sqlite/prepopulated.db"]
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ec70abe8-81db-435a-83af-01dcd3304a03"
+      }
+    }
   }
 }

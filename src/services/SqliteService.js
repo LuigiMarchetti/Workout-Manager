@@ -1,5 +1,4 @@
 import SQLite from 'react-native-sqlite-storage';
-import RNFS from 'react-native-fs';
 
 class SqliteService {
   constructor() {
