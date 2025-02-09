@@ -1,7 +1,10 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Image, SafeAreaView, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Dimensions, FlatList, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import FloatingAddButton from '../FloatingAddButton';
-import { useEffect } from 'react';
+import ExerciseVideo from '../../components/ExerciseVideo';
+import SqliteService from '../../services/SqliteService';
+import { capitalizeFirstLetterAllWords } from '../../utils/Utils';
+import { Ionicons } from '@expo/vector-icons'; // Make sure you have this installed
 
 const { width, height } = Dimensions.get('window');
 
@@ -9,26 +12,100 @@ const { width, height } = Dimensions.get('window');
 const responsiveWidth = (percent) => (width * percent) / 100;
 const responsiveHeight = (percent) => (height * percent) / 100;
 
-const exerciseData = [
-    { id: '1', name: 'Bench press', muscle: 'Chest', image: require('../../../assets/Outros/benchpress.png') },
-    { id: '2', name: 'Running', muscle: 'Legs', image: require('../../../assets/Outros/running.png') },
-    { id: '3', name: 'Diamond push up', muscle: 'Shoulder', image: require('../../../assets/Outros/diamond push up.png') },
-];
+const NewRoutineScreen = ({ navigation, route }) => {
+    const [routineName, setRoutineName] = useState('');
+    const [selectedExercises, setSelectedExercises] = useState([]);
 
-const CreateRoutineScreen = ({ navigation }) => {
+    // Handle incoming selected exercise from AddExerciseScreen
+    useEffect(() => {
+        if (route.params?.selectedExercise) {
+            setSelectedExercises(prev => {
+                // Prevent duplicates
+                const exists = prev.some(e => e.id === route.params.selectedExercise.id);
+                return exists ? prev : [...prev, route.params.selectedExercise];
+            });
+        }
+    }, [route.params?.selectedExercise]);
 
     const handleFabPress = () => {
+        // Navigate to AddExercise without resetting the stack
         navigation.navigate('AddExercise');
     };
 
+    const handleSaveRoutine = async () => {
+        if (!routineName.trim()) {
+            alert('Please enter a routine name');
+            return;
+        }
+
+        if (selectedExercises.length === 0) {
+            alert('Please select at least one exercise');
+            return;
+        }
+
+        try {
+            // Save routine - let SQLiteService handle ID creation
+            const routineId = await SqliteService.createRoutine({
+                name: routineName.trim(),
+                description: ''
+            });
+
+            // Save routine-exercise relationships
+            await SqliteService.addExercisesToRoutine(
+                routineId,
+                selectedExercises
+            );
+
+            navigation.goBack();
+        } catch (error) {
+            console.error('Error saving routine:', error);
+            alert('Failed to save routine');
+        }
+    };
+
+    // Updated renderEmptyState using improved UX design principles
+    const renderEmptyState = () => (
+        <View style={styles.emptyStateContainer}>
+            <Ionicons
+                name="barbell-outline"  // Updated valid icon name
+                size={responsiveWidth(20)}
+                color="#4C24FF"
+                style={styles.emptyStateIcon}
+            />
+            <Text style={styles.emptyStateTitle}>No Exercises Added</Text>
+            <Text style={styles.emptyStateSubtitle}>
+                Start building your routine by tapping the + button below.
+            </Text>
+        </View>
+    );
+
+    const removeExercise = (exerciseId) => {
+        setSelectedExercises(prev =>
+            prev.filter(e => e.id !== exerciseId)
+        );
+    };
+
     const renderExerciseItem = ({ item }) => (
-        <TouchableOpacity style={styles.exerciseItem}>
-            <Image source={item.image} style={styles.exerciseImage} />
+        <View style={styles.exerciseItem}>
+            <ExerciseVideo
+                id={item.id}
+                isVisible={true} // Always visible in this screen context
+                size={15}
+                borderRadius={2}
+                customStyles={{ marginRight: responsiveWidth(4) }}
+                onError={(error) => console.warn(`Video error for exercise ${item.id}:`, error)}
+            />
             <View style={styles.exerciseTextContainer}>
                 <Text style={styles.exerciseName}>{item.name}</Text>
-                <Text style={styles.exerciseMuscle}>{item.muscle}</Text>
+                <Text style={styles.exerciseMuscle}>{capitalizeFirstLetterAllWords(item.bodyPart)}</Text>
             </View>
-        </TouchableOpacity>
+            <TouchableOpacity
+                style={styles.removeButton}
+                onPress={() => removeExercise(item.id)}
+            >
+                <Text style={styles.removeButtonText}>×</Text>
+            </TouchableOpacity>
+        </View>
     );
 
     return (
@@ -39,7 +116,7 @@ const CreateRoutineScreen = ({ navigation }) => {
                         <Text style={styles.headerButtonText}>Cancel</Text>
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>New routine</Text>
-                    <TouchableOpacity style={styles.headerButton}>
+                    <TouchableOpacity style={styles.headerButton} onPress={handleSaveRoutine}>
                         <Text style={styles.headerButtonText}>Save</Text>
                     </TouchableOpacity>
                 </View>
@@ -49,14 +126,17 @@ const CreateRoutineScreen = ({ navigation }) => {
                         style={styles.input}
                         placeholder="Name"
                         placeholderTextColor="#888"
+                        value={routineName}
+                        onChangeText={setRoutineName}
                     />
                 </View>
 
                 <FlatList
-                    data={exerciseData}
+                    data={selectedExercises}
                     renderItem={renderExerciseItem}
                     keyExtractor={item => item.id}
                     style={styles.exerciseList}
+                    ListEmptyComponent={renderEmptyState}
                 />
 
                 <FloatingAddButton onPress={handleFabPress} />
@@ -91,7 +171,7 @@ const styles = StyleSheet.create({
         minWidth: responsiveWidth(20),
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: responsiveWidth(1.75), // size border radius
+        borderRadius: responsiveWidth(1.75),
     },
     headerButtonText: {
         color: '#4C24FF',
@@ -119,7 +199,7 @@ const styles = StyleSheet.create({
     exerciseList: {
         flex: 1,
         paddingHorizontal: responsiveWidth(4),
-        marginTop: responsiveHeight(2),
+        marginTop: responsiveHeight(3.5),
     },
     exerciseItem: {
         flexDirection: 'row',
@@ -128,11 +208,6 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginBottom: 10,
         padding: 10,
-    },
-    exerciseImage: {
-        width: 50,
-        height: 50,
-        marginRight: 10,
     },
     exerciseTextContainer: {
         flex: 1,
@@ -146,6 +221,38 @@ const styles = StyleSheet.create({
         color: '#888',
         fontSize: 14,
     },
+    removeButton: {
+        padding: 5,
+        marginLeft: 10,
+    },
+    removeButtonText: {
+        color: '#FF4444',
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    // Updated empty state styles for a more professional look
+    emptyStateContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    emptyStateIcon: {
+        marginBottom: responsiveHeight(2),
+    },
+    emptyStateTitle: {
+        color: '#FFF',
+        fontSize: responsiveWidth(5),
+        fontWeight: 'bold',
+        marginBottom: responsiveHeight(1),
+        textAlign: 'center',
+    },
+    emptyStateSubtitle: {
+        color: '#888',
+        fontSize: responsiveWidth(4),
+        textAlign: 'center',
+        marginHorizontal: responsiveWidth(10),
+    },
 });
 
-export default CreateRoutineScreen;
+export default NewRoutineScreen;

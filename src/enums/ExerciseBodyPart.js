@@ -1,4 +1,4 @@
-class ExerciseBodyPart {
+export class ExerciseBodyPart {
   static BACK = "back";
   static CARDIO = "cardio";
   static CHEST = "chest";

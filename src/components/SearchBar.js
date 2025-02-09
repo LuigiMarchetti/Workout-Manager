@@ -8,14 +8,14 @@ const responsiveWidth = (percent) => (width * percent) / 100;
 const responsiveHeight = (percent) => (height * percent) / 100;
 const responsiveFontSize = (size) => (width * size) / 375; // Assuming design is based on 375px width
 
-const SearchBar = ({ placeholder, onSearch }) => {
+const SearchBar = ({ placeholder, onChangeText }) => {
     return (
         <View style={styles.searchContainer}>
             <TextInput
                 style={styles.searchInput}
                 placeholder={placeholder}
                 placeholderTextColor="#888"
-                onChangeText={onSearch}
+                onChangeText={onChangeText} // Pass the onChangeText prop
             />
             <Image
                 source={require('../../assets/search.png')}

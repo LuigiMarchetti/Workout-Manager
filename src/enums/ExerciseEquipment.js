@@ -1,4 +1,4 @@
-class ExerciseEquipment {
+export class ExerciseEquipment {
     static ASSISTED = "assisted";
     static BAND = "band";
     static BARBELL = "barbell";
