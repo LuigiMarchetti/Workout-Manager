@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, FlatList, SafeAreaView, Dimensions, TouchableWithoutFeedback, BackHandler } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, FlatList, SafeAreaView, Dimensions, TouchableWithoutFeedback, BackHandler } from 'react-native';
 import WorkoutCard from './WorkoutCard';
 import Header from '../Header';
 import SearchBar from '../../components/SearchBar';
 import FloatingAddButton from '../FloatingAddButton';
 import TrainingModal from './TrainingModal';
+import SqliteService from '../../services/SqliteService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -40,6 +41,11 @@ const workoutsData = [
 
 export default function WorkoutsScreen({ navigation }) {
     const [isModalVisible, setIsModalVisible] = useState(false);
+    const [routines, setRoutines] = useState([]);
+    const [workouts, setWorkouts] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleSearch = (text) => {
         console.log(text);
@@ -53,38 +59,66 @@ export default function WorkoutsScreen({ navigation }) {
         setIsModalVisible(false);
     };
 
-    const handleSelectTraining = (training) => {
-        setIsModalVisible(false);
-        console.log('Selected training:', training);
-        navigation.navigate('NewWorkout')
-    };
-
-    // Use BackHandler to close modal when back button is pressed
     useEffect(() => {
-        const backAction = () => {
-            if (isModalVisible) {
-                handleCloseModal(); // Close the modal if it's visible
-                return true; // Prevent default back behavior
+        const loadRoutines = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
+                await SqliteService.init();
+                const data = await SqliteService.getAllRoutines();
+                setRoutines(data);
+            } catch (error) {
+                console.error('Error loading routines:', error);
+                setError('Failed to load routines');
+            } finally {
+                setIsLoading(false);
             }
-            return false; // Allow default back behavior if modal is not visible
         };
 
-        const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-
-        return () => backHandler.remove(); // Cleanup the listener when component unmounts or modal closes
+        if (isModalVisible) {
+            loadRoutines();
+        }
     }, [isModalVisible]);
+
+    const handleSelectTraining = (routine) => {
+        setIsModalVisible(false);
+        navigation.navigate('NewWorkout', {
+            routineId: routine.id,
+            routineName: routine.title
+        });
+    };
+
+    const renderLoader = () => (
+        <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4C24FF" />
+        </View>
+    );
+
+    // Add this error component
+    const renderError = () => (
+        <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Button
+                title="Try Again"
+                onPress={() => {
+                    setError(null);
+                    loadRoutines();
+                }}
+            />
+        </View>
+    );
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.screen}>
-                <Header 
+                <Header
                     title="Workouts"
                     onProfilePress={() => navigation.navigate('Profile')}
                 />
 
-                <SearchBar 
-                    placeholder="Search" 
-                    onSearch={handleSearch} 
+                <SearchBar
+                    placeholder="Search"
+                    onSearch={handleSearch}
                 />
 
                 <View style={styles.workoutListContainer}>
@@ -111,10 +145,13 @@ export default function WorkoutsScreen({ navigation }) {
                         <View style={styles.overlay}>
                             <TouchableWithoutFeedback>
                                 <View>
-                                    <TrainingModal
-                                        onClose={handleCloseModal}
-                                        onSelectTraining={handleSelectTraining}
-                                    />
+                                    {isLoading ? renderLoader() :
+                                        error ? renderError() :
+                                            <TrainingModal
+                                                routines={routines}
+                                                onClose={handleCloseModal}
+                                                onSelectTraining={handleSelectTraining}
+                                            />}
                                 </View>
                             </TouchableWithoutFeedback>
                         </View>
@@ -146,5 +183,23 @@ const styles = StyleSheet.create({
         bottom: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.5)', // This creates the dimming effect
         justifyContent: 'flex-end',
+    },
+    loadingContainer: {
+        backgroundColor: '#1A1A1A',
+        padding: 40,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    errorContainer: {
+        backgroundColor: '#1A1A1A',
+        padding: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    errorText: {
+        color: '#FF4444',
+        fontSize: 16,
+        marginBottom: 20,
     },
 });

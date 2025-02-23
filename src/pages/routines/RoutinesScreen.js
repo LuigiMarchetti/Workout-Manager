@@ -1,16 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, StyleSheet, TextInput, Image, FlatList, SafeAreaView, Dimensions, TouchableOpacity } from 'react-native';
 import RoutineCard from './RoutineCard';
 import Header from '../Header';
 import SearchBar from '../../components/SearchBar';
 import FloatingAddButton from '../FloatingAddButton';
+import SqliteService from '../../services/SqliteService';
 
 const { width, height } = Dimensions.get('window');
 
 // Calculate responsive sizes
 const responsiveWidth = (percent) => (width * percent) / 100;
 const responsiveHeight = (percent) => (height * percent) / 100;
-//const responsiveFontSize = (size) => (width * size) / 375; // Assuming design is based on 375px width
 
 const workoutsData = [
     {
@@ -35,7 +36,36 @@ const workoutsData = [
 ];
 
 export default function RoutinesScreen({ navigation }) {
+    const [routines, setRoutines] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useFocusEffect(
+        useCallback(() => {
+            console.log("RoutinesScreen recebeu foco");
+            loadRoutines();
+            return () => console.log("RoutinesScreen perdeu foco");
+        }, [])
+    );
     
+
+    const loadRoutines = async () => {
+        setIsLoading(true);
+        setRoutines([]);
+    
+        try {
+            const data = await SqliteService.getAllRoutines();
+            console.log("Rotinas carregadas:", data);
+            setRoutines(data);
+        } catch (err) {
+            console.error("Erro ao carregar rotinas:", err);
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+
     const handleSearch = (text) => {
         console.log(text);
     };
@@ -47,25 +77,25 @@ export default function RoutinesScreen({ navigation }) {
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.screen}>
-                <Header 
+                <Header
                     title="Routines"
                     onProfilePress={() => navigation.navigate('Profile')}
                 />
 
-                <SearchBar 
-                    placeholder="Search" 
-                    onSearch={handleSearch} 
+                <SearchBar
+                    placeholder="Search"
+                    onSearch={handleSearch}
                 />
 
                 <View style={styles.workoutListContainer}>
                     <FlatList
-                        data={workoutsData}
+                        data={routines}
                         keyExtractor={(item) => item.id}
                         renderItem={({ item }) => (
                             <RoutineCard
                                 title={item.title}
                                 exercisesNumber={item.exercisesNumber}
-                                imageSource={item.imageSource}
+                                id={item.idExercise?.uri}
                             />
                         )}
                         showsVerticalScrollIndicator={false}

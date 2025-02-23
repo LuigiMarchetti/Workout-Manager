@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Image, SafeAreaView, Dimensions } from 'react-native';
+import { TextInput, View, Text, TouchableOpacity, StyleSheet, FlatList, Image, SafeAreaView, Dimensions } from 'react-native';
+import SqliteService from '../../services/SqliteService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -37,16 +38,50 @@ const exerciseData = [
     },
 ];
 
-const NewWorkoutScreen = ({ navigation }) => {
+const NewWorkoutScreen = ({ navigation, route }) => {
+    const { routineId, routineName } = route.params;
     const [timer, setTimer] = useState(0);
+    const [exercises, setExercises] = useState([]);
 
     useEffect(() => {
+        loadExercises();
+
         const interval = setInterval(() => {
-            setTimer(prevTimer => prevTimer + 1);
+            setTimer(prev => prev + 1);
         }, 1000);
 
         return () => clearInterval(interval);
     }, []);
+
+    const loadExercises = async () => {
+        try {
+            const routineExercises = await SqliteService.getRoutineExercises(routineId);
+            const initializedExercises = routineExercises.map(exercise => ({
+                ...exercise,
+                sets: Array(3).fill().map((_, i) => ({
+                    set: i + 1,
+                    weight: '',
+                    done: false
+                }))
+            }));
+            setExercises(initializedExercises);
+        } catch (error) {
+            console.error('Error loading exercises:', error);
+        }
+    };
+
+    const handleWeightChange = (exerciseIndex, setIndex, value) => {
+        const newExercises = [...exercises];
+        newExercises[exerciseIndex].sets[setIndex].weight = value;
+        setExercises(newExercises);
+    };
+
+    const toggleSetDone = (exerciseIndex, setIndex) => {
+        const newExercises = [...exercises];
+        newExercises[exerciseIndex].sets[setIndex].done = 
+            !newExercises[exerciseIndex].sets[setIndex].done;
+        setExercises(newExercises);
+    };
 
     const formatTime = (time) => {
         const minutes = Math.floor(time / 60);
@@ -54,30 +89,36 @@ const NewWorkoutScreen = ({ navigation }) => {
         return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    const renderExerciseItem = ({ item }) => (
+    const renderExerciseItem = ({ item, index }) => (
         <View style={styles.exerciseItem}>
             <View style={styles.exerciseHeader}>
-                <Image source={item.image} style={styles.exerciseImage} />
+                <Image source={{ uri: item.mediaPath }} style={styles.exerciseImage} />
                 <Text style={styles.exerciseName}>{item.name}</Text>
-                <TouchableOpacity>
-                    <Text style={styles.moreOptions}>:</Text>
-                </TouchableOpacity>
             </View>
-            <FlatList
-                data={item.sets}
-                renderItem={({ item: set }) => (
-                    <View style={styles.setRow}>
-                        <Text style={styles.setText}>Set {set.set}</Text>
-                        <Text style={styles.setText}>{set.weight || set.distance || set.reps}</Text>
-                        <Text style={styles.setText}>{set.reps || set.time || set.count}</Text>
+            {item.sets.map((set, setIndex) => (
+                <View key={`set-${setIndex}`} style={styles.setRow}>
+                    <Text style={styles.setText}>Set {set.set}</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={set.weight}
+                        onChangeText={(text) => handleWeightChange(index, setIndex, text)}
+                        placeholder="0 kg"
+                        placeholderTextColor="#666"
+                        keyboardType="numeric"
+                    />
+                    <TouchableOpacity 
+                        onPress={() => toggleSetDone(index, setIndex)}
+                        style={styles.checkbox}
+                    >
                         <Image 
-                            source={set.done ? require('../../../assets/checkedBox.png') : require('../../../assets/unCheckedBox.png')} 
+                            source={set.done ? 
+                                require('../../../assets/checkedBox.png') : 
+                                require('../../../assets/unCheckedBox.png')} 
                             style={styles.checkImage}
                         />
-                    </View>
-                )}
-                keyExtractor={(set, index) => `${item.id}-${index}`}
-            />
+                    </TouchableOpacity>
+                </View>
+            ))}
         </View>
     );
 
@@ -88,7 +129,7 @@ const NewWorkoutScreen = ({ navigation }) => {
                     <TouchableOpacity onPress={() => navigation.goBack()}>
                         <Text style={styles.headerButton}>Cancel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Chest Train</Text>
+                    <Text style={styles.headerTitle}>{routineName}</Text>
                     <TouchableOpacity>
                         <Text style={styles.headerButton}>Finish</Text>
                     </TouchableOpacity>
@@ -97,7 +138,7 @@ const NewWorkoutScreen = ({ navigation }) => {
                 <Text style={styles.timer}>{formatTime(timer)}</Text>
 
                 <FlatList
-                    data={exerciseData}
+                    data={exercises}
                     renderItem={renderExerciseItem}
                     keyExtractor={item => item.id}
                     style={styles.exerciseList}
@@ -108,6 +149,17 @@ const NewWorkoutScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+    input: {
+        color: '#FFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#4C24FF',
+        width: responsiveWidth(20),
+        textAlign: 'center',
+        fontSize: responsiveWidth(3.5),
+    },
+    checkbox: {
+        padding: responsiveWidth(1),
+    },
     safeArea: {
         flex: 1,
         backgroundColor: '#000',

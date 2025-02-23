@@ -7,25 +7,26 @@ const { width, height } = Dimensions.get('window');
 const responsiveWidth = (percent) => (width * percent) / 100;
 const responsiveHeight = (percent) => (height * percent) / 100;
 
-function TrainingModal({ onClose, onSelectTraining }) {
-  const trainings = ['Chest train', 'Back train', 'Sunday light training', 'Legs train'];
-
+function TrainingModal({ routines, onClose, onSelectTraining }) {
   return (
     <View style={styles.modalContainer}>
       <View style={styles.modalContent}>
         <Text style={styles.modalTitle}>Begin training</Text>
         <View style={styles.trainingDropdown}>
-          {trainings.map((training, index) => (
+          {routines.map((routine, index) => (
             <TouchableOpacity
-              key={index}
-              style={[styles.trainingOption, index < trainings.length - 1 && styles.borderBottom]} // Add borderBottom style conditionally
-              onPress={() => onSelectTraining(training)}
+              key={routine.id}
+              style={[styles.trainingOption, index < routines.length - 1 && styles.borderBottom]}
+              onPress={() => onSelectTraining(routine)}
             >
-              <Text style={styles.trainingText}>{training}</Text>
+              <Text style={styles.trainingText}>{routine.title}</Text>
+              <Text style={[styles.trainingText, { fontSize: responsiveHeight(1.8) }]}>
+                {routine.exercisesNumber} exercises
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity style={styles.startButton} onPress={() => onSelectTraining(trainings[0])}>
+        <TouchableOpacity style={styles.startButton} onPress={() => onSelectTraining(routines[0])}>
           <Feather name="play" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
