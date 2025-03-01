@@ -1,24 +1,33 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, Platform, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
+import ExerciseVideo from '../../components/ExerciseVideo';
 
-const { width, height } = Dimensions.get('window');
-const scale = width / 375; // Assuming the design is based on a 375px wide screen
+const { width } = Dimensions.get('window');
+const scale = width / 375; // Based on a 375px wide design
 
-const normalize = (size) => {
-  return Math.round(scale * size);
-};
+const normalize = (size) => Math.round(scale * size);
 
-export default function WorkoutCard({ title, date, duration, weight, imageSource }) {
+export default function WorkoutCard({ title, date, duration, weight, id, onPress }) {
+
   return (
-    <View style={styles.card}>
-      <Image source={imageSource} style={styles.image} />
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+    >
+      <ExerciseVideo
+        id={id}
+        size={18} // Percentage of screen width
+        isVisible={true}
+        customStyles={styles.video}
+        showRetryButton={false}
+      />
       <View style={styles.details}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.info}>{date}</Text>
         <Text style={styles.info}>{duration} min</Text>
         <Text style={styles.info}>{weight} kg</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -30,20 +39,19 @@ const styles = StyleSheet.create({
     padding: normalize(15.5),
     marginBottom: normalize(10),
     alignItems: 'center',
-    width: width * 0.9, // 90% of screen width
+    width: width * 0.9,
     alignSelf: 'center',
-    // Shadow for iOS
     shadowColor: '#333',
     shadowOffset: { width: 0, height: normalize(2) },
     shadowOpacity: 0.3,
     shadowRadius: normalize(4),
-    // Shadow for Android
     elevation: Platform.OS === 'android' ? normalize(6) : 0,
   },
-  image: {
+  video: {
     width: normalize(70),
     height: normalize(70),
     marginRight: normalize(14),
+    borderRadius: normalize(8),
   },
   details: {
     flex: 1,
@@ -56,6 +64,7 @@ const styles = StyleSheet.create({
   },
   info: {
     color: '#AAAAAA',
-    fontSize: normalize(12)
+    fontSize: normalize(12),
+    marginBottom: normalize(3),
   },
 });

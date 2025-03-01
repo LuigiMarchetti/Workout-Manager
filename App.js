@@ -15,11 +15,6 @@ export default function App() {
     const initializeApp = async () => {
       try {
         await SqliteService.init();
-        /*
-        const exerciseList = await SqliteService.getAllExercises();
-        console.log(exerciseList);
-        setExercises(exerciseList);
-        */
         setIsLoading(false);
       } catch (err) {
         setError(`Database error: ${err.message}`);

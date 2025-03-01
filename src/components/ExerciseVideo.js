@@ -24,7 +24,7 @@ const ExerciseVideo = ({
         paused: !isVisible
     });
 
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 2;
     const RETRY_DELAY = 1000; // 1 second
 
     useEffect(() => {

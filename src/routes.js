@@ -11,7 +11,8 @@ import StatisticsScreen from './pages/statistics/StatisticsScreen';
 import NewRoutineScreen from './pages/routines/NewRoutineScreen';
 import AddExerciseScreen from './pages/routines/AddExerciseScreen';
 import CustomExerciseScreen from './pages/routines/CustomExerciseScreen';
-import NewWorkoutScreen from './pages/workouts/NewWorkoutScreen';
+import WorkoutDetailScreen from './pages/workouts/WorkoutDetailScreen';
+import NewWorkoutScreen from './pages/workouts/NewWorkoutScreen.js';
 import { useState } from 'react';
 
 const Tab = createBottomTabNavigator();
@@ -102,6 +103,7 @@ export default function Routes() {
           <Stack.Screen name="NewRoutine" component={NewRoutineScreen} />
           <Stack.Screen name="AddExercise" component={AddExerciseScreen} />
           <Stack.Screen name="CustomExercise" component={CustomExerciseScreen} />
+          <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
         </Stack.Navigator>
       </SafeAreaView>
     </NavigationContainer>

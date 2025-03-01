@@ -267,6 +267,213 @@ class SqliteService {
     });
   }
 
+  async getAllWorkouts() {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(tx => {
+        const query = `
+                SELECT 
+                    t.id,
+                    t.date,
+                    t.duration,
+                    t.volume,
+                    r.name as routineName,
+                    e.id as firstExerciseId
+                FROM Train t
+                JOIN Routine r ON t.routine_id = r.id
+                LEFT JOIN (
+                    SELECT es.train_id, e.id
+                    FROM ExerciseSession es
+                    JOIN Exercise e ON es.exercise_id = e.id
+                    GROUP BY es.train_id
+                ) e ON t.id = e.train_id
+                ORDER BY t.date DESC
+            `;
+
+        tx.executeSql(
+          query,
+          [],
+          (_, results) => {
+            const workouts = [];
+            for (let i = 0; i < results.rows.length; i++) {
+              workouts.push(results.rows.item(i));
+            }
+            resolve(workouts);
+          },
+          (_, error) => reject(error)
+        );
+      });
+    });
+  }
+
+  async createWorkoutSession(trainData, exerciseSessions) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(
+        tx => {
+          // Insert Train record
+          const trainId = uuidv4();
+          tx.executeSql(
+            `INSERT INTO Train 
+               (id, routine_id, date, duration, volume, notes) 
+               VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              trainId,
+              trainData.routineId,
+              new Date().toISOString(),
+              trainData.duration,
+              trainData.volume,
+              trainData.notes || ''
+            ],
+            (_, result) => {
+              // Insert Exercise Sessions
+              let sessionIndex = 0;
+
+              const insertNextSession = () => {
+                if (sessionIndex >= exerciseSessions.length) {
+                  resolve(trainId);
+                  return;
+                }
+
+                const session = exerciseSessions[sessionIndex];
+                tx.executeSql(
+                  `INSERT INTO ExerciseSession 
+                     (train_id, exercise_id, session_order) 
+                     VALUES (?, ?, ?)`,
+                  [trainId, session.exerciseId, sessionIndex],
+                  (_, sessionResult) => {
+                    const sessionId = sessionResult.insertId;
+                    let seriesIndex = 0;
+
+                    const insertNextSeries = () => {
+                      if (seriesIndex >= session.sets.length) {
+                        sessionIndex++;
+                        insertNextSession();
+                        return;
+                      }
+
+                      const set = session.sets[seriesIndex];
+                      tx.executeSql(
+                        `INSERT INTO Series 
+                           (exercise_session_id, weight, repetitions, series_order) 
+                           VALUES (?, ?, ?, ?)`,
+                        [
+                          sessionId,
+                          parseFloat(set.weight) || 0,
+                          parseInt(set.reps) || 0,
+                          seriesIndex + 1
+                        ],
+                        () => {
+                          seriesIndex++;
+                          insertNextSeries();
+                        },
+                        (_, error) => reject(error)
+                      );
+                    };
+
+                    insertNextSeries();
+                  },
+                  (_, error) => reject(error)
+                );
+              };
+
+              insertNextSession();
+            },
+            (_, error) => reject(error)
+          );
+        },
+        error => {
+          console.error('Transaction error:', error);
+          reject(error);
+        },
+        () => {
+          console.log('Workout session saved successfully');
+        }
+      );
+    });
+  }
+
+  async getWorkoutDetails(trainId) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(tx => {
+        const query = `
+          SELECT 
+            t.*,
+            r.name as routineName,
+            e.id as exerciseId,
+            e.name as exerciseName,
+            e.mediaPath,
+            es.session_order,
+            s.weight,
+            s.repetitions,
+            s.series_order
+          FROM Train t
+          JOIN Routine r ON t.routine_id = r.id
+          JOIN ExerciseSession es ON t.id = es.train_id
+          JOIN Exercise e ON es.exercise_id = e.id
+          JOIN Series s ON es.id = s.exercise_session_id
+          WHERE t.id = ?
+          ORDER BY es.session_order, s.series_order
+        `;
+
+        tx.executeSql(
+          query,
+          [trainId],
+          (_, results) => {
+            const workout = { exercises: [] };
+            let currentExercise = null;
+
+            for (let i = 0; i < results.rows.length; i++) {
+              const row = results.rows.item(i);
+
+              if (!currentExercise || currentExercise.exerciseId !== row.exerciseId) {
+                currentExercise = {
+                  exerciseId: row.exerciseId,
+                  name: row.exerciseName,
+                  mediaPath: row.mediaPath,
+                  sets: []
+                };
+                workout.exercises.push(currentExercise);
+              }
+
+              currentExercise.sets.push({
+                weight: row.weight,
+                reps: row.repetitions,
+                order: row.series_order
+              });
+            }
+
+            workout.metadata = {
+              id: trainId,
+              date: row.date,
+              duration: row.duration,
+              volume: row.volume,
+              routineName: row.routineName
+            };
+
+            resolve(workout);
+          },
+          (_, error) => reject(error)
+        );
+      });
+    });
+  }
+
+  async deleteWorkout(trainId) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(
+        tx => {
+          tx.executeSql(
+            `DELETE FROM Train WHERE id = ?`,
+            [trainId],
+            (_, result) => resolve(result),
+            (_, error) => reject(error)
+          );
+        },
+        error => reject(error),
+        () => console.log('Workout deleted successfully')
+      );
+    });
+  }
+
   closeDatabase() {
     if (this.db) {
       this.db.close(() => {
