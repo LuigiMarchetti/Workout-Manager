@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Dimensions, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Dimensions, FlatList, ActivityIndicator, Alert, Button } from 'react-native';
 import SqliteService from '../../services/SqliteService';
 import ExerciseVideo from '../../components/ExerciseVideo';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -19,6 +19,7 @@ const WorkoutDetailScreen = ({ navigation, route }) => {
       try {
         setLoading(true);
         const data = await SqliteService.getWorkoutDetails(workoutId);
+        console.log(data);
         setWorkout(data);
       } catch (error) {
         console.error('Error loading workout:', error);
@@ -168,7 +169,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFF',
-    fontSize: responsiveWidth(4.5),
+    fontSize: responsiveWidth(5),
     fontWeight: 'bold',
   },
   metadataContainer: {

@@ -17,8 +17,7 @@ class SqliteService {
         console.log('Database opened successfully');
       },
       error => {
-        setError(`Error opening database: ${error.message}`);
-        setIsLoading(false);
+        console.error(`Error opening database: ${error.message}`);
       }
     );
 
@@ -149,9 +148,9 @@ class SqliteService {
           console.error('Transaction error:', transactionError);
           reject(transactionError);
         },
-        () => { // ✅ Transaction success callback (post-commit)
+        () => { // Transaction success callback (post-commit)
           console.log('Transaction completed successfully');
-          resolve(routineId); // Resolve HERE after commit
+          resolve(routineId); // Resolve here after commit
         }
       );
     });
@@ -184,9 +183,9 @@ class SqliteService {
           console.error('Exercise transaction error:', transactionError);
           reject(transactionError);
         },
-        () => { // ✅ Transaction success callback
+        () => { // Transaction success callback
           console.log('All exercises added successfully');
-          resolve(); // Resolve HERE, after commit
+          resolve(); // Resolve here after commit
         }
       );
     });
@@ -220,7 +219,6 @@ class SqliteService {
           [],
           (_, results) => {
             const routines = [];
-            console.log(results.rows)
             for (let i = 0; i < results.rows.length; i++) {
               const row = results.rows.item(i);
               routines.push({
@@ -418,12 +416,30 @@ class SqliteService {
           query,
           [trainId],
           (_, results) => {
+            if (results.rows.length === 0) {
+              reject(new Error('Workout not found'));
+              return;
+            }
+
             const workout = { exercises: [] };
             let currentExercise = null;
+            // Get metadata from the first row
+            const firstRow = results.rows.item(0);
+
+            // Set metadata once
+            workout.metadata = {
+              id: trainId,
+              date: firstRow.date,
+              duration: firstRow.duration,
+              volume: firstRow.volume,
+              routineName: firstRow.routineName,
+              notes: firstRow.notes
+            };
 
             for (let i = 0; i < results.rows.length; i++) {
               const row = results.rows.item(i);
 
+              // Check if this is a new exercise
               if (!currentExercise || currentExercise.exerciseId !== row.exerciseId) {
                 currentExercise = {
                   exerciseId: row.exerciseId,
@@ -440,14 +456,6 @@ class SqliteService {
                 order: row.series_order
               });
             }
-
-            workout.metadata = {
-              id: trainId,
-              date: row.date,
-              duration: row.duration,
-              volume: row.volume,
-              routineName: row.routineName
-            };
 
             resolve(workout);
           },
@@ -471,6 +479,113 @@ class SqliteService {
         error => reject(error),
         () => console.log('Workout deleted successfully')
       );
+    });
+  }
+
+  async getRoutineDetails(routineId) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(tx => {
+        // First, retrieve the routine record
+        tx.executeSql(
+          'SELECT * FROM Routine WHERE id = ?',
+          [routineId],
+          (_, result) => {
+            if (result.rows.length === 0) {
+              reject(new Error('Routine not found'));
+              return;
+            }
+            const routine = result.rows.item(0);
+            // Next, retrieve the associated exercises in order
+            tx.executeSql(
+              `SELECT e.* 
+               FROM Routine_Exercise re
+               JOIN Exercise e ON re.exercise_id = e.id
+               WHERE re.routine_id = ?
+               ORDER BY re.exercise_order ASC`,
+              [routineId],
+              (_, exercisesResult) => {
+                const exercises = [];
+                for (let i = 0; i < exercisesResult.rows.length; i++) {
+                  exercises.push(exercisesResult.rows.item(i));
+                }
+                routine.exercises = exercises;
+                resolve(routine);
+              },
+              (_, error) => reject(error)
+            );
+          },
+          (_, error) => reject(error)
+        );
+      });
+    });
+  }
+
+  async deleteRoutine(routineId) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(tx => {
+        // First, delete workouts associated with the routine
+        tx.executeSql(
+          'DELETE FROM Train WHERE routine_id = ?',
+          [routineId],
+          () => {
+            // Now delete the routine
+            tx.executeSql(
+              'DELETE FROM Routine WHERE id = ?',
+              [routineId],
+              (_, result) => resolve(result),
+              (_, error) => reject(error)
+            );
+          },
+          (_, error) => reject(error)
+        );
+      });
+    });
+  }
+
+
+  async updateRoutine(routineId, { name, description }) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(tx => {
+        tx.executeSql(
+          'UPDATE Routine SET name = ?, description = ? WHERE id = ?',
+          [name, description, routineId],
+          (_, result) => resolve(result),
+          (_, error) => reject(error)
+        );
+      });
+    });
+  }
+
+  async updateExercisesForRoutine(routineId, exercises) {
+    return new Promise((resolve, reject) => {
+      this.db.transaction(tx => {
+        // First, remove existing relationships for this routine.
+        tx.executeSql(
+          'DELETE FROM Routine_Exercise WHERE routine_id = ?',
+          [routineId],
+          () => {
+            if (!exercises || exercises.length === 0) {
+              resolve();
+              return;
+            }
+            let insertedCount = 0;
+            exercises.forEach((exercise, index) => {
+              tx.executeSql(
+                'INSERT INTO Routine_Exercise (routine_id, exercise_id, exercise_order) VALUES (?, ?, ?)',
+                [routineId, exercise.id, index],
+                () => {
+                  insertedCount++;
+                  if (insertedCount === exercises.length) {
+                    resolve();
+                  }
+                },
+                (_, error) => reject(error)
+              );
+            });
+          },
+          (_, error) => reject(error)
+        );
+      });
     });
   }
 
